@@ -55,6 +55,8 @@ def associate_doctype_rfid_tags(doc_type , doc_no,scanned_rfid_tag_data):
 			pass
 	return is_updated
 
+#small change for git hub
+
 @frappe.whitelist()
 def sample_update():
 	#print "***** Enters Sample update scanned_rfid_tag_data",scanned_rfid_tag_data

@@ -69,7 +69,7 @@ def update_rfid_tag_details_child_doc( doc_type,doc_no,matched_rfid_tag_details_
 	is_child_doc_updation_complete = 0
 	rfid_tag_details_doc = frappe.get_doc( RFID_DOC_DETAILS_LABEL,matched_rfid_tag_details_name )
 	is_last_row_ed_updated = False
-	last_row_idx = 0 	# lastrow
+	last_row_idx = 0 	# lastrowlinearlayout_pointer
 	for roww in getattr(rfid_tag_details_doc,RFID_DOC_DETAILS_CHILD_NAME):
 		last_row_idx = last_row_idx +1
 
@@ -117,3 +117,75 @@ def	create_rfid_tag_details_doc( scanned_rfid_tag_data,tag_association,pch_rfid_
       is_created = 1
       return is_created
 
+#packing details api start
+@frappe.whitelist()
+def fetch_tag_packing_details( rfid_tag ):
+	stat = {"pointer": "","pointer_rarb_id":"","pointer_warehouse":"","tag_attached":"","tag_doc_id": "","box_status": "" ,"box_name": "", "box_doc_id" :"","pb_rarb_id":"","pi_rarb_id":""  }
+	doc_id = frappe.db.get_value(RFID_DOC_DETAILS_LABEL, {"rfid_tag":rfid_tag},"name")
+	rfid_tag_details_doc = frappe.get_doc( RFID_DOC_DETAILS_LABEL,doc_id )
+	last_row_idx = 0 	# lastrow
+	for roww in getattr(rfid_tag_details_doc,RFID_DOC_DETAILS_CHILD_NAME):
+		last_row_idx = last_row_idx +1
+
+	for roww in getattr(rfid_tag_details_doc,RFID_DOC_DETAILS_CHILD_NAME):
+		if roww.idx == last_row_idx: #check for packing box/item
+			associated_doctype =  roww.pch_rfid_doctype_associated_with
+			stat["tag_attached"] = associated_doctype
+			stat["tag_doc_id"] = roww.pch_rfid_docid_associated_with
+
+			#pb logic
+			if associated_doctype == "Packed Box Custom" :
+				stat["pointer"] = "PBOX"
+				stat["pointer_rarb_id"] =  frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"current_rarb_id")
+				stat["pointer_warehouse"] =  frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"current_warehouse")
+				stat["box_doc_id"] = roww.pch_rfid_docid_associated_with
+				stat["box_name"] = frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"packing_box")
+				stat["box_status"] = frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"status")
+				stat["pb_rarb_id"] = frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"current_rarb_id")
+
+			#pi logic
+			if associated_doctype == "Packed Item Custom" :
+				box_id = get_box_id(roww.pch_rfid_docid_associated_with)
+				pi_rarb_id =  frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"current_rarb_id")
+				stat["pi_rarb_id"] = pi_rarb_id
+				if box_id : #if this packing item  have pb then it will come here
+					box_status = frappe.db.get_value("Packed Box Custom", {"name":box_id},"status")
+					pi_pb_rarb_id = frappe.db.get_value("Packed Box Custom", {"name":box_id},"current_rarb_id") #pb rarb id where this packing item is placed
+					stat["box_status"] = box_status
+					stat["box_doc_id"] = box_id
+					stat["box_name"] = frappe.db.get_value("Packed Box Custom", {"name":box_id},"packing_box")
+					stat["box_status"] = box_status
+					stat["pb_rarb_id"] = frappe.db.get_value("Packed Box Custom", {"name":box_id},"current_rarb_id")
+
+
+					if box_status == "Completed" : #poniter datas will come in these if else loop
+						stat["pointer"] = "PBOX"
+						stat["pointer_rarb_id"] = pi_pb_rarb_id
+						stat["pointer_warehouse"] = frappe.db.get_value("Packed Box Custom", {"name":box_id},"current_warehouse")
+					else:
+						stat["pointer"] = "PITEM"
+						stat["pointer_rarb_id"] = pi_rarb_id
+						stat["pointer_warehouse"] = frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"current_warehouse")
+
+				else: #if this packing item does not have pb then it will come here
+					stat["pointer"] = "PITEM"
+					stat["pointer_rarb_id"] = pi_rarb_id
+					stat["pointer_warehouse"] = frappe.db.get_value(associated_doctype, {"name":roww.pch_rfid_docid_associated_with},"current_warehouse")
+
+					stat["box_status"] = "No PBOX"
+					stat["box_doc_id"] = "No PBOX"
+					stat["box_name"] = "No PBOX"
+					stat["box_status"] = "No PBOX"
+					stat["pb_rarb_id"] = "No PBOX"
+
+	return stat
+
+def get_box_id(pitem_id):
+	box_id =frappe.db.sql("""select parent,packed_item from `tabPacked Box Breif Details Child` where packed_item= %s """, (pitem_id),as_dict=1)
+	print("box_id",box_id)
+	return box_id[0]["parent"] if box_id else None
+
+
+@frappe.whitelist()
+def test_pd_from_android():
+	return "yes comming"

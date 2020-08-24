@@ -14,6 +14,8 @@ RFID_DOC_DETAILS_LABEL = "RFID Tag Info" #DOCTYPE NAME TO MANINTAIN ALL RFID TRA
 RFID_DOC_DETAILS_CHILD_LABEL = "RFID Tag Association Info" #CHILD DOC OF RFID_DOC_DETAILS
 RFID_DOC_DETAILS_CHILD_NAME = "rfid_tag_association_info"
 
+#git
+
 
 @frappe.whitelist()
 def hellosub(loggedInUser):

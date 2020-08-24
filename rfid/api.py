@@ -192,18 +192,113 @@ def test_pd_from_android():
 
 @frappe.whitelist()
 def fetch_si_pipb_details(doc_id):
-	si_stat = {"isValid":False,"pb_needed":"","pb_completed":"", "pb_par_completed":"", "pi_needed":"", "pi_completed":"", "pi_par_completed":""}
+	doc_total_items_pi_pb_json={}
+	#sales invoice item dic (each tems pi and pb details are stored)
+	# {si_item : {pi : [],pb : []}}
+	si_stat = {"isValid":False,"pb_needed":"","pb_completed":"", "pb_par_completed_qty":"", "pb_pending": "", "pi_needed":"", "pi_completed":"", "pi_par_completed":"", "pi_pending": ""}
 	doctype = "Sales Invoice"
+
 	doctype_data = frappe.get_doc(doctype, doc_id)
-
 	si_stat["isValid"] = True if  doctype_data else False
-
-	si_item_dic = get_itemwise_qty(doctype,doc_id);
-
-	for item_code, qty in si_item_dic.items(): #iterate over all sales invoice item table
-		item_master = frappe.get_doc("Item", item_code)
+	if si_stat["isValid"] == False :
+		return si_stat
 
 
+	#doc_total_items_pi_pb_json = get_doc_total_items_pi_pb_json(doctype,doc_id)
+
+	dpi_id  = frappe.db.get_value("Detailed Packing Info", {"voucher_no":doc_id},"name")
+	dpi_doc = frappe.get_doc("Detailed Packing Info", dpi_id)
+
+	#completed,pi partial and pending calculation
+	pi_completed_qty = 0
+	pi_pending_qty = 0
+	pi_needed = 0
+
+	for dpi_pi_row in dpi_doc.packing_details_review:
+		pi_needed = pi_needed + dpi_pi_row.qty
+		pi_id =  dpi_pi_row.packing_id
+		if pi_id :
+			pi_completed_qty = pi_completed_qty + dpi_pi_row.qty
+		else:
+			pi_pending_qty = pi_pending_qty + dpi_pi_row.qty
+
+	si_stat["pi_completed"] =  pi_completed_qty
+	si_stat["pi_pending"] =  pi_pending_qty
+
+	#pb_partial and pending calculation
+	pb_completed_qty = 0
+	pb_pending_qty = 0
+	pb_par_completed_qty = 0
+	pb_needed = 0
+
+	for dpi_box_row in dpi_doc.detailed_packing_box:
+		pb_needed = pb_needed + 1
+		packing_box_id =  dpi_box_row.packing_box_id
+		if packing_box_id:
+			pbc_doc_status = frappe.db.get_value("Packed Box Custom", {"name":packing_box_id},"status")
+			if pbc_doc_status == "Completed" :
+				pb_completed_qty = pb_completed_qty +1
+			elif pbc_doc_status == "Partially Completed":
+				pb_par_completed_qty = pb_par_completed_qty +1
+		else:
+			pb_pending_qty = pb_pending_qty +1
+
+	si_stat["pb_completed"] =  pb_completed_qty
+	si_stat["pb_par_completed"] =  pb_par_completed_qty
+	si_stat["pb_pending"] =  pb_pending_qty
+	si_stat["pb_needed"] =  pb_needed
+	si_stat["pi_needed"] =  pi_needed
+
+	return  si_stat
+
+@frappe.whitelist()
+def get_doc_total_items_pi_pb_json(doctype,doc_id): # {si_item1 :{"pi":[],"pb":[]},si_item2:{"pi":[],"pb":[]} }
+	doc_total_items_pi_pb_json_temp = { }
+	si_item_dic = get_itemwise_qty(doctype,doc_id)
+
+	for item_code, qty in si_item_dic.items():  #iterate over all sales invoice item table
+		doc_item_pi_pb_dic={}
+		item_master_doc  = frappe.get_doc("Item", item_code)
+		doc_item_pi_pb_dic["packing_item_data"]= get_parent_packing_items_list(item_master_doc,qty)
+		doc_item_pi_pb_dic["packing_box_data"]= get_parent_item_box_list(item_master_doc,qty)
+		doc_total_items_pi_pb_json_temp.update({item_code : doc_item_pi_pb_dic})
+
+		#pi_total_qty_count_for_si
+		for pi_item_dic in get_parent_packing_items_list :
+			si_stat["pi_needed"] = si_stat["pi_needed"] +  pi_item_dic["pi_qty_ac_to_doc_item_qty"]
+
+		#pb_total_qty_count_for_sis
+		for pb_item_dic in get_parent_item_box_list :
+			si_stat["pb_needed"] = si_stat["pb_needed"] +  pb_item_dic["pb_qty_ac_to_doc_item_qty"]
+
+
+
+	return doc_total_items_pi_pb_json_temp
+
+
+def get_parent_packing_items_list(item_master_doc,qty):
+	#packing item collection data
+	parent_packing_items_list=[]
+	for child_item in item_master_doc.packing_item_configuration :
+		child_item_details={}
+		child_item_details["packing_item"] = child_item.packing_item
+		child_item_details["pi_qty"] = child_item.qty
+		child_item_details["pi_qty_ac_to_doc_item_qty"] = child_item.qty * qty
+		child_item_details["packing_item_group"] = child_item.packing_item_group
+		parent_packing_items_list.append(child_item_details)
+	return parent_packing_items_list
+
+def get_parent_item_box_list(item_master_doc,qty):
+	#packing box collection data
+	parent_item_box_list = []
+	for child_item in item_master_doc.packing_box_configuration :
+		packing_box_details = {}
+		packing_box_details["packing_box_name"] = child_item.packing_box
+		packing_box_details["packing_item"] = child_item.packing_item
+		packing_box_details["pb_qty"] = child_item.qty
+		child_item_details["pb_qty_ac_to_doc_item_qty"] = child_item.qty * qty
+		parent_item_box_list.append(packing_box_details)
+	return parent_item_box_list
 
 @frappe.whitelist()
 def get_itemwise_qty(doctype,doc_id):
@@ -211,5 +306,6 @@ def get_itemwise_qty(doctype,doc_id):
 	itemwise_qty_list = frappe.db.sql("""select item_code,qty from `tabSales Invoice Item` where parent= %s """, (doc_id),as_dict=1)
 	for itemwise_qty_li in itemwise_qty_list:
 		itemwise_qty_dic.update({itemwise_qty_li["item_code"] : itemwise_qty_li["qty"]})
+	return itemwise_qty_dic
 
 	#print "itemwise_qty_dic",itemwise_qty_dic

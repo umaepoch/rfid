@@ -189,3 +189,27 @@ def get_box_id(pitem_id):
 @frappe.whitelist()
 def test_pd_from_android():
 	return "yes comming"
+
+@frappe.whitelist()
+def fetch_si_pipb_details(doc_id):
+	si_stat = {"isValid":False,"pb_needed":"","pb_completed":"", "pb_par_completed":"", "pi_needed":"", "pi_completed":"", "pi_par_completed":""}
+	doctype = "Sales Invoice"
+	doctype_data = frappe.get_doc(doctype, doc_id)
+
+	si_stat["isValid"] = True if  doctype_data else False
+
+	si_item_dic = get_itemwise_qty(doctype,doc_id);
+
+	for item_code, qty in si_item_dic.items(): #iterate over all sales invoice item table
+		item_master = frappe.get_doc("Item", item_code)
+
+
+
+@frappe.whitelist()
+def get_itemwise_qty(doctype,doc_id):
+	itemwise_qty_dic = { }
+	itemwise_qty_list = frappe.db.sql("""select item_code,qty from `tabSales Invoice Item` where parent= %s """, (doc_id),as_dict=1)
+	for itemwise_qty_li in itemwise_qty_list:
+		itemwise_qty_dic.update({itemwise_qty_li["item_code"] : itemwise_qty_li["qty"]})
+
+	#print "itemwise_qty_dic",itemwise_qty_dic

@@ -197,7 +197,7 @@ def fetch_si_pipb_details(doc_id):
 	doc_total_items_pi_pb_json={}
 	#sales invoice item dic (each tems pi and pb details are stored)
 	# {si_item : {pi : [],pb : []}}
-	si_stat = {"isValid":False,"pb_needed":"","pb_completed":"", "pb_par_completed_qty":"", "pb_pending": "", "pi_needed":"", "pi_completed":"", "pi_par_completed":"", "pi_pending": ""}
+	si_stat = {"isValid":False,"pb_needed":"","pb_completed":"", "pb_par_completed_qty":"", "pb_pending": "", "pi_needed":"", "pi_completed":"", "pi_par_completed":"", "pi_pending": "","isDeliverable":""}
 	doctype = "Sales Invoice"
 
 	doctype_data = frappe.get_doc(doctype, doc_id)
@@ -205,9 +205,7 @@ def fetch_si_pipb_details(doc_id):
 	if si_stat["isValid"] == False :
 		return si_stat
 
-
 	#doc_total_items_pi_pb_json = get_doc_total_items_pi_pb_json(doctype,doc_id)
-
 	dpi_id  = frappe.db.get_value("Detailed Packing Info", {"voucher_no":doc_id},"name")
 	dpi_doc = frappe.get_doc("Detailed Packing Info", dpi_id)
 
@@ -239,8 +237,10 @@ def fetch_si_pipb_details(doc_id):
 		if packing_box_id:
 			pbc_doc_status = frappe.db.get_value("Packed Box Custom", {"name":packing_box_id},"status")
 			if pbc_doc_status == "Completed" :
+				print("packing_box_id pbc_doc_status",pbc_doc_status)
 				pb_completed_qty = pb_completed_qty +1
 			elif pbc_doc_status == "Partially Completed":
+				print("packing_box_id pbc_doc_status",pbc_doc_status)
 				pb_par_completed_qty = pb_par_completed_qty +1
 		else:
 			pb_pending_qty = pb_pending_qty +1
@@ -251,7 +251,14 @@ def fetch_si_pipb_details(doc_id):
 	si_stat["pb_needed"] =  pb_needed
 	si_stat["pi_needed"] =  pi_needed
 
+	if  pi_completed_qty ==  pi_needed and  pb_completed_qty ==  pb_needed :
+		si_stat["isDeliverable"] =  "Yes"
+	else:
+		si_stat["isDeliverable"] =  "No"
+
 	return  si_stat
+
+
 
 @frappe.whitelist()
 def get_doc_total_items_pi_pb_json(doctype,doc_id): # {si_item1 :{"pi":[],"pb":[]},si_item2:{"pi":[],"pb":[]} }
@@ -311,3 +318,38 @@ def get_itemwise_qty(doctype,doc_id):
 	return itemwise_qty_dic
 
 	#print "itemwise_qty_dic",itemwise_qty_dic
+
+@frappe.whitelist()
+def create_delivery_note(doc_id):
+	print("***From create_delivery_note  din fun hited")
+	voucher_type = "Sales Invoice"
+	voucher_no = doc_id
+	tableName = "`tab{} Item`".format(voucher_type)
+	items = frappe.db.sql("""
+	select
+	parent,item_code,item_name,description,qty,uom,conversion_factor,stock_qty,rate,amount
+	from
+	"""+tableName+"""
+	where
+	parent = %s""",( voucher_no), as_dict=1)
+
+
+
+	dn = frappe.new_doc("Delivery Note")
+	dn.customer = frappe.db.get_value(voucher_type, {"name":voucher_no},"customer")
+	dn.set('items', [])
+	for item in items :
+		dn_items = dn.append('items', {})
+		dn_items.item_code =  item["item_code"]
+		dn_items.item_name =   item["item_name"]
+		dn_items.description =   item["description"]
+		dn_items.uom = item["uom"]
+		dn_items.qty = item["qty"]
+		dn_items.warehouse =  "Stores - EPCH"
+		dn_items.target_warehouse =  "Yard - EPCH"
+	dn.save(ignore_permissions=True)
+	return dn.name
+
+@frappe.whitelist()
+def sur_test(  ):
+	return "working rfid fine"

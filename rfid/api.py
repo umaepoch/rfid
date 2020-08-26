@@ -327,7 +327,7 @@ def create_delivery_note(doc_id):
 	tableName = "`tab{} Item`".format(voucher_type)
 	items = frappe.db.sql("""
 	select
-	parent,item_code,item_name,description,qty,uom,conversion_factor,stock_qty,rate,amount
+	parent,item_code,item_name,description,qty,uom,conversion_factor,stock_qty,rate,amount,warehouse
 	from
 	"""+tableName+"""
 	where
@@ -345,8 +345,7 @@ def create_delivery_note(doc_id):
 		dn_items.description =   item["description"]
 		dn_items.uom = item["uom"]
 		dn_items.qty = item["qty"]
-		dn_items.warehouse =  "Stores - EPCH"
-		dn_items.target_warehouse =  "Yard - EPCH"
+		dn_items.warehouse =  item["warehouse"]
 	dn.save(ignore_permissions=True)
 	return dn.name
 
